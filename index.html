@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FitCheck — Tempered Glass Checker Engine</title>
+<meta name="description" content="Match tempered glass measurements against phone display measurements. Type, cutout, corner radius and size tolerance checking.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#1A2536; --steel:#5C6B82; --faint:#8A96A8;
+  --paper:#F7F8FA; --panel:#FFFFFF; --hair:#E2E6ED; --hair-strong:#C9D0DB;
+  --pass:#0E8B79; --pass-bg:#E4F3F0; --fail:#C2402D; --fail-bg:#F9E9E5;
+  --warn:#B07A17; --warn-bg:#F8F0DD;
+  --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif; --disp:'Archivo',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px}
+body{font-family:var(--sans);color:var(--ink);background:var(--paper);line-height:1.55}
+button{font-family:var(--sans);cursor:pointer}
+input,select{font-family:var(--sans);font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--hair-strong);border-radius:6px;height:38px;padding:0 10px;width:100%}
+input[type=number]{font-family:var(--mono)}
+input:focus,select:focus{outline:2px solid var(--pass);outline-offset:-1px}
+label{font-size:12px;color:var(--steel);display:block;margin-bottom:4px;letter-spacing:.02em}
+
+header{background:var(--ink);color:#fff;padding:20px 0 0}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.brand{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.brand h1{font-family:var(--disp);font-weight:700;font-size:26px;letter-spacing:-.01em}
+.brand h1 span{color:#6FD2C3}
+.brand p{font-size:13px;color:#9AA8BC}
+nav{display:flex;gap:2px;margin-top:18px}
+nav button{background:transparent;border:0;color:#9AA8BC;font-size:14px;font-weight:500;padding:10px 16px;border-radius:8px 8px 0 0}
+nav button[aria-selected=true]{background:var(--paper);color:var(--ink)}
+nav button:hover{color:#fff}
+nav button[aria-selected=true]:hover{color:var(--ink)}
+
+main{padding:24px 0 60px}
+section[hidden]{display:none}
+.panel{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:20px}
+.panel h2{font-family:var(--disp);font-size:17px;font-weight:600;margin-bottom:4px}
+.panel .sub{font-size:13px;color:var(--steel);margin-bottom:16px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:2px}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.grid2 .span2{grid-column:span 2}
+@media(max-width:520px){.grid2 .span2{grid-column:span 1}}
+
+.btn{border:1px solid var(--hair-strong);background:var(--panel);color:var(--ink);border-radius:6px;height:38px;padding:0 16px;font-size:14px;font-weight:500}
+.btn:hover{background:var(--paper)}
+.btn-primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn-primary:hover{background:#2A3A54}
+.btn-sm{height:28px;padding:0 10px;font-size:12px;border-radius:5px}
+.btn-danger{color:var(--fail)}
+.btn-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);text-align:left;padding:8px 10px;border-bottom:1px solid var(--hair-strong);font-weight:500;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--hair);vertical-align:middle}
+td.num{font-family:var(--mono);white-space:nowrap}
+tr:hover td{background:var(--paper)}
+.table-scroll{overflow-x:auto;margin-top:8px}
+.empty{padding:28px;text-align:center;color:var(--faint);font-size:14px}
+
+.tag{display:inline-block;font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:4px;background:var(--paper);border:1px solid var(--hair);white-space:nowrap}
+
+.tol-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px 28px;background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:16px 20px;margin-bottom:20px}
+.tol{display:flex;align-items:center;gap:10px}
+.tol label{margin:0;white-space:nowrap}
+.tol input[type=range]{height:auto;border:0;padding:0;flex:1;accent-color:var(--pass)}
+.tol output{font-family:var(--mono);font-size:13px;font-weight:500;min-width:58px;text-align:right}
+
+.result{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:16px 18px;margin-bottom:12px}
+.result.ok{border-color:var(--pass)}
+.result-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.result-head b{font-size:15px;font-weight:600}
+.badge{font-size:12px;font-weight:600;padding:3px 12px;border-radius:20px;white-space:nowrap}
+.badge.ok{background:var(--pass-bg);color:var(--pass)}
+.badge.warn{background:var(--warn-bg);color:var(--warn)}
+.badge.fail{background:var(--fail-bg);color:var(--fail)}
+.checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px 16px;font-size:13px}
+.check{display:flex;gap:8px;align-items:baseline}
+.check .mark{font-family:var(--mono);font-weight:500}
+.check.ok .mark{color:var(--pass)}
+.check.fail .mark{color:var(--fail)}
+.check .d{color:var(--steel);font-family:var(--mono);font-size:12px}
+.result details{margin-top:10px}
+.result summary{font-size:12px;color:var(--steel);cursor:pointer}
+
+.gauge-box{margin-top:12px;background:var(--paper);border:1px dashed var(--hair-strong);border-radius:8px;padding:12px;text-align:center}
+.gauge-box svg{max-width:100%;height:auto}
+
+.picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:20px}
+.io-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.hint{font-size:12px;color:var(--faint);margin-top:8px;font-family:var(--mono)}
+.toast{position:sticky;bottom:16px;margin:16px auto 0;width:fit-content;max-width:90%;background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:8px;opacity:0;transition:opacity .25s;pointer-events:none}
+.toast.show{opacity:1}
+.footer-note{margin-top:32px;font-size:12px;color:var(--faint);text-align:center;font-family:var(--mono)}
+.stack{display:grid;gap:20px}
+@media(min-width:880px){.stack.cols{grid-template-columns:1fr 1fr}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <h1>FitCheck<span>.</span></h1>
+      <p>Tempered glass checker engine — match glass stock to phone displays by type, cutout, radius and size</p>
+    </div>
+    <nav role="tablist">
+      <button role="tab" aria-selected="true" data-tab="checker">Checker</button>
+      <button role="tab" aria-selected="false" data-tab="phones">Phone data</button>
+      <button role="tab" aria-selected="false" data-tab="glasses">Glass data</button>
+      <button role="tab" aria-selected="false" data-tab="io">Import / export</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ CHECKER ============ -->
+<section id="tab-checker">
+  <div class="tol-bar">
+    <div class="tol">
+      <label for="tolSize">Size tolerance ±</label>
+      <input type="range" id="tolSize" min="0" max="5" step="0.5" value="1.5">
+      <output id="tolSizeOut">1.5 mm</output>
+    </div>
+    <div class="tol">
+      <label for="tolRad">Radius tolerance ±</label>
+      <input type="range" id="tolRad" min="0" max="4" step="0.5" value="1">
+      <output id="tolRadOut">1.0 mm</output>
+    </div>
+    <div class="tol">
+      <label for="basis">Compare against</label>
+      <select id="basis">
+        <option value="display">Display area H × W</option>
+        <option value="overall">Overall phone H × W</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="picker">
+    <div class="panel">
+      <p class="eyebrow">Mode A</p>
+      <h2>Phone → find glass</h2>
+      <p class="sub">Pick a phone, rank every glass in stock against it.</p>
+      <select id="pickPhone"></select>
+    </div>
+    <div class="panel">
+      <p class="eyebrow">Mode B</p>
+      <h2>Glass → find phones</h2>
+      <p class="sub">Pick a glass, find every phone it fits.</p>
+      <select id="pickGlass">
+        <option value="">— off —</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="results"></div>
+</section>
+
+<!-- ============ PHONES ============ -->
+<section id="tab-phones" hidden>
+  <div class="stack cols">
+    <div class="panel">
+      <p class="eyebrow">Data 1</p>
+      <h2>Add phone measurement</h2>
+      <p class="sub">Overall phone and display-area dimensions in millimetres.</p>
+      <div class="grid2">
+        <div><label for="pBrand">Brand</label><input id="pBrand" placeholder="Samsung"></div>
+        <div><label for="pModel">Model name</label><input id="pModel" placeholder="Galaxy S24 Ultra"></div>
+        <div><label for="pType">Display type</label>
+          <select id="pType"><option>Flat</option><option>3D Curved</option><option>2D Curved</option></select></div>
+        <div><label for="pCam">Camera cutout</label>
+          <select id="pCam"><option>Punch Hole - Center</option><option>Punch Hole - Left</option><option>Punch Hole - Right</option><option>Dynamic Island</option><option>U Cut</option><option>V Cut</option></select></div>
+        <div><label for="pRad">Corner radius (mm)</label><input id="pRad" type="number" step="0.1" min="0" placeholder="2.5"></div>
+        <div></div>
+        <div><label for="pOH">Overall height (mm)</label><input id="pOH" type="number" step="0.1" min="0" placeholder="162.3"></div>
+        <div><label for="pOW">Overall width (mm)</label><input id="pOW" type="number" step="0.1" min="0" placeholder="79.0"></div>
+        <div><label for="pDH">Display height (mm)</label><input id="pDH" type="number" step="0.1" min="0" placeholder="157.8"></div>
+        <div><label for="pDW">Display width (mm)</label><input id="pDW" type="number" step="0.1" min="0" placeholder="75.6"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="pSave">Add phone</button>
+        <button class="btn" id="pCancel" hidden>Cancel edit</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Phone database <span class="tag" id="pCount">0</span></h2>
+      <div class="table-scroll"><table id="pTable"></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GLASSES ============ -->
+<section id="tab-glasses" hidden>
+  <div class="stack cols">
+    <div class="panel">
+      <p class="eyebrow">Data 2</p>
+      <h2>Add tempered glass measurement</h2>
+      <p class="sub">Overall glass dimensions in millimetres.</p>
+      <div class="grid2">
+        <div><label for="gBrand">Brand</label><input id="gBrand" placeholder="XShield"></div>
+        <div><label for="gModel">Model name</label><input id="gModel" placeholder="TG-S24U Pro"></div>
+        <div><label for="gType">Glass type</label>
+          <select id="gType"><option>Clear / Full Cover (Flat)</option><option>Hot Bending 3D</option><option>Hot Bending 2D</option></select></div>
+        <div><label for="gCam">Camera cutout</label>
+          <select id="gCam"><option>Punch Hole - Center</option><option>Punch Hole - Left</option><option>Punch Hole - Right</option><option>Dynamic Island</option><option>U Cut</option><option>V Cut</option></select></div>
+        <div><label for="gRad">Corner radius (mm)</label><input id="gRad" type="number" step="0.1" min="0" placeholder="2.5"></div>
+        <div></div>
+        <div><label for="gH">Glass height (mm)</label><input id="gH" type="number" step="0.1" min="0" placeholder="157.5"></div>
+        <div><label for="gW">Glass width (mm)</label><input id="gW" type="number" step="0.1" min="0" placeholder="75.2"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="gSave">Add glass</button>
+        <button class="btn" id="gCancel" hidden>Cancel edit</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Glass database <span class="tag" id="gCount">0</span></h2>
+      <div class="table-scroll"><table id="gTable"></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ IMPORT / EXPORT ============ -->
+<section id="tab-io" hidden>
+  <div class="stack cols">
+    <div class="panel">
+      <h2>Phones — CSV</h2>
+      <p class="sub">Columns: brand, model, display_type, camera_cutout, corner_radius, overall_h, overall_w, display_h, display_w</p>
+      <div class="io-row">
+        <button class="btn" id="pExport">Export phones CSV</button>
+        <button class="btn" onclick="document.getElementById('pImport').click()">Import phones CSV</button>
+        <input type="file" id="pImport" accept=".csv" hidden>
+      </div>
+      <p class="hint">Import appends rows. Header row required.</p>
+    </div>
+    <div class="panel">
+      <h2>Glasses — CSV</h2>
+      <p class="sub">Columns: brand, model, glass_type, camera_cutout, corner_radius, glass_h, glass_w</p>
+      <div class="io-row">
+        <button class="btn" id="gExport">Export glasses CSV</button>
+        <button class="btn" onclick="document.getElementById('gImport').click()">Import glasses CSV</button>
+        <input type="file" id="gImport" accept=".csv" hidden>
+      </div>
+      <p class="hint">Import appends rows. Header row required.</p>
+    </div>
+    <div class="panel">
+      <h2>Data storage</h2>
+      <p class="sub">All data is saved in this browser (localStorage). Nothing is uploaded anywhere. Export CSVs to back up or move to another device.</p>
+      <div class="io-row">
+        <button class="btn" id="loadSample">Load sample data</button>
+        <button class="btn btn-danger" id="clearAll">Clear all data</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+<p class="footer-note">FitCheck · glass ↔ display type map: Flat → Clear/Full Cover · 3D Curved → Hot Bending 3D · 2D Curved → Hot Bending 2D</p>
+</main>
+
+<script>
+"use strict";
+const TYPE_MAP = { "Flat":"Clear / Full Cover (Flat)", "3D Curved":"Hot Bending 3D", "2D Curved":"Hot Bending 2D" };
+const REV_TYPE = Object.fromEntries(Object.entries(TYPE_MAP).map(([k,v])=>[v,k]));
+const LS_P = "fitcheck.phones.v1", LS_G = "fitcheck.glasses.v1";
+
+const SAMPLE_P = [
+ {brand:"Samsung",model:"Galaxy S24 Ultra",type:"Flat",cam:"Punch Hole - Center",rad:2.5,oh:162.3,ow:79.0,dh:157.8,dw:75.6},
+ {brand:"Apple",model:"iPhone 15 Pro Max",type:"Flat",cam:"Dynamic Island",rad:12.0,oh:159.9,ow:76.7,dh:154.9,dw:71.6},
+ {brand:"OnePlus",model:"12",type:"3D Curved",cam:"Punch Hole - Center",rad:4.0,oh:164.3,ow:75.8,dh:160.1,dw:72.9},
+ {brand:"Xiaomi",model:"Redmi Note 13",type:"Flat",cam:"Punch Hole - Center",rad:3.0,oh:161.1,ow:75.0,dh:156.4,dw:71.4},
+ {brand:"Vivo",model:"Y28",type:"Flat",cam:"V Cut",rad:3.5,oh:163.6,ow:75.7,dh:158.2,dw:72.0}
+];
+const SAMPLE_G = [
+ {brand:"XShield",model:"TG-S24U Pro",type:"Clear / Full Cover (Flat)",cam:"Punch Hole - Center",rad:2.5,h:157.5,w:75.2},
+ {brand:"GlassPro",model:"iP15PM Full",type:"Clear / Full Cover (Flat)",cam:"Dynamic Island",rad:12.0,h:154.5,w:71.2},
+ {brand:"CurveFit",model:"OP12 HotBend",type:"Hot Bending 3D",cam:"Punch Hole - Center",rad:4.0,h:159.8,w:72.5},
+ {brand:"XShield",model:"Universal 6.7",type:"Clear / Full Cover (Flat)",cam:"Punch Hole - Center",rad:3.0,h:156.0,w:71.0},
+ {brand:"GlassPro",model:"VC-158",type:"Clear / Full Cover (Flat)",cam:"V Cut",rad:3.5,h:157.9,w:71.7}
+];
+
+let phones = load(LS_P), glasses = load(LS_G);
+if (phones === null && glasses === null) { phones = SAMPLE_P.slice(); glasses = SAMPLE_G.slice(); persist(); }
+phones = phones || []; glasses = glasses || [];
+let editP = -1, editG = -1;
+
+function load(k){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+function persist(){ try{ localStorage.setItem(LS_P, JSON.stringify(phones)); localStorage.setItem(LS_G, JSON.stringify(glasses)); }catch(e){} }
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function fmt(v){ return (Math.round(v*10)/10).toFixed(1); }
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
+
+/* ---------- tabs ---------- */
+document.querySelectorAll("nav [role=tab]").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll("nav [role=tab]").forEach(x=>x.setAttribute("aria-selected", x===b));
+    document.querySelectorAll("main > section").forEach(s=>s.hidden = s.id !== "tab-"+b.dataset.tab);
+  });
+});
+
+/* ---------- engine ---------- */
+function checkPair(p,g,tolSize,tolRad,basis){
+  const refH = basis==="overall" ? p.oh : p.dh;
+  const refW = basis==="overall" ? p.ow : p.dw;
+  const hD = g.h - refH, wD = g.w - refW, rD = Math.abs(p.rad - g.rad);
+  const checks = [
+    {label:"Glass type",   ok: TYPE_MAP[p.type]===g.type, d: p.type+" → needs "+TYPE_MAP[p.type]},
+    {label:"Camera cutout",ok: p.cam===g.cam,             d: p.cam+" vs "+g.cam},
+    {label:"Corner radius",ok: rD<=tolRad,                d: "Δ "+fmt(rD)+" mm / limit "+fmt(tolRad)},
+    {label:"Height",       ok: Math.abs(hD)<=tolSize,     d: fmt(g.h)+" vs "+fmt(refH)+" (Δ "+(hD>=0?"+":"")+fmt(hD)+")"},
+    {label:"Width",        ok: Math.abs(wD)<=tolSize,     d: fmt(g.w)+" vs "+fmt(refW)+" (Δ "+(wD>=0?"+":"")+fmt(wD)+")"}
+  ];
+  const passed = checks.filter(c=>c.ok).length;
+  return {checks, passed, total:checks.length, score:Math.round(passed/checks.length*100), refH, refW};
+}
+
+function gaugeSVG(p,g,r){
+  const scale = 1.6;
+  const W = Math.max(p.ow,g.w)*scale+80, H = Math.max(p.oh,g.h)*scale+50;
+  const px = (W - p.ow*scale)/2, py = 25;
+  const dx = px + (p.ow-p.dw)/2*scale, dy = py + (p.oh-p.dh)/2*scale;
+  const gx = px + (p.ow-g.w)/2*scale, gy = py + (p.oh-g.h)/2*scale;
+  const gc = r.passed===r.total ? "#0E8B79" : "#C2402D";
+  return '<svg viewBox="0 0 '+Math.round(W)+' '+Math.round(H)+'" width="'+Math.round(W)+'" role="img" aria-label="To-scale overlay of glass on phone display">'+
+    '<rect x="'+px+'" y="'+py+'" width="'+(p.ow*scale)+'" height="'+(p.oh*scale)+'" rx="'+(p.rad*scale)+'" fill="none" stroke="#8A96A8" stroke-width="1.5"/>'+
+    '<rect x="'+dx+'" y="'+dy+'" width="'+(p.dw*scale)+'" height="'+(p.dh*scale)+'" rx="'+(p.rad*scale*0.8)+'" fill="#E2E6ED" stroke="none"/>'+
+    '<rect x="'+gx+'" y="'+gy+'" width="'+(g.w*scale)+'" height="'+(g.h*scale)+'" rx="'+(g.rad*scale)+'" fill="'+gc+'" fill-opacity="0.16" stroke="'+gc+'" stroke-width="1.5" stroke-dasharray="6 3"/>'+
+    '<text x="'+(px+p.ow*scale/2)+'" y="'+(py-8)+'" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="11" fill="#5C6B82">phone '+fmt(p.oh)+' × '+fmt(p.ow)+' · display '+fmt(p.dh)+' × '+fmt(p.dw)+'</text>'+
+    '<text x="'+(px+p.ow*scale/2)+'" y="'+(py+p.oh*scale+16)+'" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="11" fill="'+gc+'">glass '+fmt(g.h)+' × '+fmt(g.w)+' mm</text>'+
+    '</svg>';
+}
+
+function badge(r){
+  if (r.passed===r.total) return '<span class="badge ok">Compatible</span>';
+  if (r.score>=60) return '<span class="badge warn">Partial · '+r.score+'%</span>';
+  return '<span class="badge fail">Not compatible · '+r.score+'%</span>';
+}
+function checksHTML(r){
+  return '<div class="checks">'+r.checks.map(c=>
+    '<div class="check '+(c.ok?'ok':'fail')+'"><span class="mark">'+(c.ok?'✓':'✕')+'</span><span>'+esc(c.label)+'<br><span class="d">'+esc(c.d)+'</span></span></div>'
+  ).join("")+'</div>';
+}
+
+function runCheck(){
+  const tolSize = parseFloat(document.getElementById("tolSize").value);
+  const tolRad  = parseFloat(document.getElementById("tolRad").value);
+  document.getElementById("tolSizeOut").value = tolSize.toFixed(1)+" mm";
+  document.getElementById("tolRadOut").value  = tolRad.toFixed(1)+" mm";
+  const basis = document.getElementById("basis").value;
+  const out = document.getElementById("results");
+  const gPick = document.getElementById("pickGlass").value;
+
+  if (gPick !== "") {                    /* Mode B: glass → phones */
+    const g = glasses[parseInt(gPick)];
+    if (!g){ out.innerHTML=""; return; }
+    if (!phones.length){ out.innerHTML='<div class="empty">No phones in database — add some in the Phone data tab.</div>'; return; }
+    const ranked = phones.map((p,i)=>({p,i,r:checkPair(p,g,tolSize,tolRad,basis)})).sort((a,b)=>b.r.score-a.r.score);
+    out.innerHTML = '<p class="eyebrow" style="margin-bottom:10px">'+ranked.length+' phones checked against '+esc(g.brand)+' '+esc(g.model)+'</p>'+
+      ranked.map(({p,r})=>
+        '<div class="result'+(r.passed===r.total?' ok':'')+'"><div class="result-head"><b>'+esc(p.brand)+' '+esc(p.model)+'</b>'+badge(r)+'</div>'+
+        checksHTML(r)+
+        '<details><summary>Fit overlay (to scale)</summary><div class="gauge-box">'+gaugeSVG(p,g,r)+'</div></details></div>'
+      ).join("");
+    return;
+  }
+
+  const pi = parseInt(document.getElementById("pickPhone").value); /* Mode A */
+  if (isNaN(pi) || !phones[pi]){ out.innerHTML='<div class="empty">Add a phone in the Phone data tab to start checking.</div>'; return; }
+  const p = phones[pi];
+  if (!glasses.length){ out.innerHTML='<div class="empty">No glasses in database — add some in the Glass data tab.</div>'; return; }
+  const ranked = glasses.map((g,i)=>({g,i,r:checkPair(p,g,tolSize,tolRad,basis)})).sort((a,b)=>b.r.score-a.r.score);
+  out.innerHTML = '<p class="eyebrow" style="margin-bottom:10px">'+ranked.length+' glasses checked against '+esc(p.brand)+' '+esc(p.model)+'</p>'+
+    ranked.map(({g,r})=>
+      '<div class="result'+(r.passed===r.total?' ok':'')+'"><div class="result-head"><b>'+esc(g.brand)+' '+esc(g.model)+'</b>'+badge(r)+'</div>'+
+      checksHTML(r)+
+      '<details><summary>Fit overlay (to scale)</summary><div class="gauge-box">'+gaugeSVG(p,g,r)+'</div></details></div>'
+    ).join("");
+}
+
+/* ---------- render tables + pickers ---------- */
+function render(){
+  document.getElementById("pCount").textContent = phones.length;
+  document.getElementById("gCount").textContent = glasses.length;
+
+  const pT = document.getElementById("pTable");
+  pT.innerHTML = phones.length ?
+    '<thead><tr><th>Brand / model</th><th>Type</th><th>Cutout</th><th>R</th><th>Overall</th><th>Display</th><th></th></tr></thead><tbody>'+
+    phones.map((p,i)=>'<tr><td><b>'+esc(p.brand)+'</b> '+esc(p.model)+'</td><td><span class="tag">'+esc(p.type)+'</span></td><td>'+esc(p.cam)+'</td><td class="num">'+fmt(p.rad)+'</td><td class="num">'+fmt(p.oh)+'×'+fmt(p.ow)+'</td><td class="num">'+fmt(p.dh)+'×'+fmt(p.dw)+'</td>'+
+    '<td style="white-space:nowrap"><button class="btn btn-sm" onclick="startEditP('+i+')">Edit</button> <button class="btn btn-sm btn-danger" onclick="delP('+i+')">Delete</button></td></tr>').join("")+'</tbody>'
+    : '<tbody><tr><td class="empty">No phones yet</td></tr></tbody>';
+
+  const gT = document.getElementById("gTable");
+  gT.innerHTML = glasses.length ?
+    '<thead><tr><th>Brand / model</th><th>Type</th><th>Cutout</th><th>R</th><th>Size</th><th></th></tr></thead><tbody>'+
+    glasses.map((g,i)=>'<tr><td><b>'+esc(g.brand)+'</b> '+esc(g.model)+'</td><td><span class="tag">'+esc(g.type)+'</span></td><td>'+esc(g.cam)+'</td><td class="num">'+fmt(g.rad)+'</td><td class="num">'+fmt(g.h)+'×'+fmt(g.w)+'</td>'+
+    '<td style="white-space:nowrap"><button class="btn btn-sm" onclick="startEditG('+i+')">Edit</button> <button class="btn btn-sm btn-danger" onclick="delG('+i+')">Delete</button></td></tr>').join("")+'</tbody>'
+    : '<tbody><tr><td class="empty">No glasses yet</td></tr></tbody>';
+
+  const pp = document.getElementById("pickPhone"), prevP = pp.value;
+  pp.innerHTML = phones.map((p,i)=>'<option value="'+i+'">'+esc(p.brand)+' '+esc(p.model)+'</option>').join("");
+  if (prevP !== "" && parseInt(prevP) < phones.length) pp.value = prevP;
+
+  const gp = document.getElementById("pickGlass"), prevG = gp.value;
+  gp.innerHTML = '<option value="">— off —</option>'+glasses.map((g,i)=>'<option value="'+i+'">'+esc(g.brand)+' '+esc(g.model)+'</option>').join("");
+  if (prevG !== "" && parseInt(prevG) < glasses.length) gp.value = prevG;
+
+  runCheck();
+}
+
+/* ---------- phone CRUD ---------- */
+function readPhoneForm(){
+  const v = id=>document.getElementById(id).value.trim();
+  const n = id=>parseFloat(document.getElementById(id).value);
+  const p = {brand:v("pBrand"),model:v("pModel"),type:v("pType"),cam:v("pCam"),rad:n("pRad"),oh:n("pOH"),ow:n("pOW"),dh:n("pDH"),dw:n("pDW")};
+  if (!p.brand||!p.model||[p.rad,p.oh,p.ow,p.dh,p.dw].some(isNaN)) { toast("Fill brand, model, radius and all four measurements"); return null; }
+  return p;
+}
+function clearPhoneForm(){ ["pBrand","pModel","pRad","pOH","pOW","pDH","pDW"].forEach(id=>document.getElementById(id).value=""); editP=-1;
+  document.getElementById("pSave").textContent="Add phone"; document.getElementById("pCancel").hidden=true; }
+document.getElementById("pSave").addEventListener("click",()=>{
+  const p = readPhoneForm(); if(!p) return;
+  if (editP>=0){ phones[editP]=p; toast("Phone updated"); } else { phones.push(p); toast("Phone added"); }
+  clearPhoneForm(); persist(); render();
+});
+document.getElementById("pCancel").addEventListener("click",clearPhoneForm);
+window.startEditP = i=>{
+  const p = phones[i]; editP=i;
+  const set=(id,v)=>document.getElementById(id).value=v;
+  set("pBrand",p.brand);set("pModel",p.model);set("pType",p.type);set("pCam",p.cam);set("pRad",p.rad);set("pOH",p.oh);set("pOW",p.ow);set("pDH",p.dh);set("pDW",p.dw);
+  document.getElementById("pSave").textContent="Save changes"; document.getElementById("pCancel").hidden=false;
+};
+window.delP = i=>{ phones.splice(i,1); if(editP===i)clearPhoneForm(); persist(); render(); toast("Phone deleted"); };
+
+/* ---------- glass CRUD ---------- */
+function readGlassForm(){
+  const v = id=>document.getElementById(id).value.trim();
+  const n = id=>parseFloat(document.getElementById(id).value);
+  const g = {brand:v("gBrand"),model:v("gModel"),type:v("gType"),cam:v("gCam"),rad:n("gRad"),h:n("gH"),w:n("gW")};
+  if (!g.brand||!g.model||[g.rad,g.h,g.w].some(isNaN)) { toast("Fill brand, model, radius, height and width"); return null; }
+  return g;
+}
+function clearGlassForm(){ ["gBrand","gModel","gRad","gH","gW"].forEach(id=>document.getElementById(id).value=""); editG=-1;
+  document.getElementById("gSave").textContent="Add glass"; document.getElementById("gCancel").hidden=true; }
+document.getElementById("gSave").addEventListener("click",()=>{
+  const g = readGlassForm(); if(!g) return;
+  if (editG>=0){ glasses[editG]=g; toast("Glass updated"); } else { glasses.push(g); toast("Glass added"); }
+  clearGlassForm(); persist(); render();
+});
+document.getElementById("gCancel").addEventListener("click",clearGlassForm);
+window.startEditG = i=>{
+  const g = glasses[i]; editG=i;
+  const set=(id,v)=>document.getElementById(id).value=v;
+  set("gBrand",g.brand);set("gModel",g.model);set("gType",g.type);set("gCam",g.cam);set("gRad",g.rad);set("gH",g.h);set("gW",g.w);
+  document.getElementById("gSave").textContent="Save changes"; document.getElementById("gCancel").hidden=false;
+};
+window.delG = i=>{ glasses.splice(i,1); if(editG===i)clearGlassForm(); persist(); render(); toast("Glass deleted"); };
+
+/* ---------- CSV ---------- */
+function csvCell(s){ s=String(s); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function download(name,text){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"})); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+}
+function parseCSV(text){
+  const rows=[]; let row=[],cell="",q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){cell+='"';i++;} else q=false; } else cell+=c; }
+    else if(c==='"') q=true;
+    else if(c===','){ row.push(cell); cell=""; }
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&text[i+1]==='\n')i++; row.push(cell); rows.push(row); row=[]; cell=""; }
+    else cell+=c;
+  }
+  if(cell!==""||row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r=>r.some(c=>c.trim()!==""));
+}
+document.getElementById("pExport").addEventListener("click",()=>{
+  const head="brand,model,display_type,camera_cutout,corner_radius,overall_h,overall_w,display_h,display_w";
+  download("phones.csv", head+"\n"+phones.map(p=>[p.brand,p.model,p.type,p.cam,p.rad,p.oh,p.ow,p.dh,p.dw].map(csvCell).join(",")).join("\n"));
+});
+document.getElementById("gExport").addEventListener("click",()=>{
+  const head="brand,model,glass_type,camera_cutout,corner_radius,glass_h,glass_w";
+  download("glasses.csv", head+"\n"+glasses.map(g=>[g.brand,g.model,g.type,g.cam,g.rad,g.h,g.w].map(csvCell).join(",")).join("\n"));
+});
+document.getElementById("pImport").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f)return;
+  f.text().then(t=>{
+    const rows=parseCSV(t).slice(1); let n=0;
+    rows.forEach(r=>{ if(r.length>=9){ const p={brand:r[0].trim(),model:r[1].trim(),type:r[2].trim(),cam:r[3].trim(),rad:parseFloat(r[4]),oh:parseFloat(r[5]),ow:parseFloat(r[6]),dh:parseFloat(r[7]),dw:parseFloat(r[8])};
+      if(p.brand&&p.model&&![p.rad,p.oh,p.ow,p.dh,p.dw].some(isNaN)){ phones.push(p); n++; } } });
+    persist(); render(); toast(n+" phones imported"); e.target.value="";
+  });
+});
+document.getElementById("gImport").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f)return;
+  f.text().then(t=>{
+    const rows=parseCSV(t).slice(1); let n=0;
+    rows.forEach(r=>{ if(r.length>=7){ const g={brand:r[0].trim(),model:r[1].trim(),type:r[2].trim(),cam:r[3].trim(),rad:parseFloat(r[4]),h:parseFloat(r[5]),w:parseFloat(r[6])};
+      if(g.brand&&g.model&&![g.rad,g.h,g.w].some(isNaN)){ glasses.push(g); n++; } } });
+    persist(); render(); toast(n+" glasses imported"); e.target.value="";
+  });
+});
+
+/* ---------- misc ---------- */
+document.getElementById("loadSample").addEventListener("click",()=>{
+  phones=phones.concat(SAMPLE_P); glasses=glasses.concat(SAMPLE_G); persist(); render(); toast("Sample data loaded");
+});
+document.getElementById("clearAll").addEventListener("click",()=>{
+  if(confirm("Delete all phones and glasses? Export CSVs first if you need a backup.")){ phones=[];glasses=[];persist();render();toast("All data cleared"); }
+});
+["tolSize","tolRad","basis","pickPhone","pickGlass"].forEach(id=>{
+  document.getElementById(id).addEventListener("input",runCheck);
+  document.getElementById(id).addEventListener("change",runCheck);
+});
+
+render();
+</script>
+</body>
+</html>
