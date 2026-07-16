@@ -288,11 +288,13 @@ tr:hover td{background:var(--paper)}
 </section>
 
 <div class="toast" id="toast" role="status"></div>
-<p class="footer-note">FitCheck · glass ↔ display type map: Flat → Clear/Full Cover · 3D Curved → Hot Bending 3D · 2D Curved → Hot Bending 2D</p>
+<p class="footer-note">FitCheck v1.6 · glass ↔ display type map: Flat → Clear/Full Cover · 3D Curved → Hot Bending 3D · 2D Curved → Hot Bending 2D</p>
 </main>
 
 <script>
 "use strict";
+const VERSION = "1.6";
+console.info("[FitCheck] version", VERSION);
 const TYPE_MAP = { "Flat":"Clear / Full Cover (Flat)", "3D Curved":"Hot Bending 3D", "2D Curved":"Hot Bending 2D" };
 const REV_TYPE = Object.fromEntries(Object.entries(TYPE_MAP).map(([k,v])=>[v,k]));
 const LS_P = "fitcheck.phones.v1", LS_G = "fitcheck.glasses.v1";
@@ -579,7 +581,7 @@ async function fetchAnyRoute(url, extract, label){
           if (!text || text.length < 300) throw new Error("empty response");
           if (/too many requests|access denied|captcha|cf-challenge/i.test(text.slice(0, 4000))) throw new Error("blocked by site");
           const out = extract(text);
-          if (!out){ console.debug("[FitCheck no-data]", route.name, text.slice(0,400)); throw new Error("no data in page"); }
+          if (!out){ window.__lastNoData = {route: route.name, snippet: text.slice(0, 700)}; console.debug("[FitCheck no-data]", route.name, text.slice(0,400)); throw new Error("no data in page"); }
           if (!done){ done = true; window.__lastRoute = route.name; console.info("[FitCheck] route succeeded:", route.name); resolve(out); }
         }catch(e){
           const msg = route.name+": "+(e.message || e.name || "failed");
@@ -699,14 +701,15 @@ async function osSearchRun(){
   box.innerHTML = ""; btn.disabled = true;
   try{
     let result = null, lastErr = null;
-    for (let attempt = 1; attempt <= 2 && !result; attempt++){
+    const bases = [GSM, "https://m.gsmarena.com/"];
+    for (let attempt = 0; attempt < bases.length && !result; attempt++){
       try{
         result = await fetchAnyRoute(
-          GSM + "results.php3?sQuickSearch=yes&sName=" + encodeURIComponent(q),
-          extractSearchItems, (attempt>1?"Retrying — ":"")+"Searching \u201C"+q+"\u201D");
+          bases[attempt] + "results.php3?sQuickSearch=yes&sName=" + encodeURIComponent(q),
+          extractSearchItems, (attempt>0?"Retrying via mobile site — ":"")+"Searching \u201C"+q+"\u201D");
       }catch(e){
         lastErr = e;
-        if (attempt === 1){ osStatus("First attempt failed, retrying in 3 seconds …", true); await new Promise(r=>setTimeout(r,3000)); }
+        if (attempt === 0){ osStatus("First attempt failed, retrying via mobile site …", true); await new Promise(r=>setTimeout(r,2000)); }
       }
     }
     if (!result) throw lastErr;
@@ -744,6 +747,11 @@ async function osSearchRun(){
     });
   }catch(e){
     osStatus("Search failed — "+e.message, false);
+    if (window.__lastNoData){
+      box.innerHTML = '<details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Show raw response sample (for debugging — screenshot this if asking for help)</summary>'+
+        '<p class="hint">Route: '+esc(window.__lastNoData.route)+'</p>'+
+        '<pre style="font-family:var(--mono);font-size:11px;white-space:pre-wrap;word-break:break-all;background:var(--paper);border:1px solid var(--hair);border-radius:6px;padding:10px;max-height:220px;overflow:auto">'+esc(window.__lastNoData.snippet)+'</pre></details>';
+    }
   }finally{ btn.disabled = false; }
 }
 function addOnlinePhone(rec){
