@@ -178,6 +178,7 @@ tr:hover td{background:var(--paper)}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input id="osQuery" placeholder="e.g. Galaxy S24 Ultra" style="flex:1;min-width:200px" aria-label="Phone model to search">
       <button class="btn btn-primary" id="osSearch">Search online</button>
+      <button class="btn" id="osTest">Test connection</button>
     </div>
     <div id="osStatus" class="hint" hidden></div>
     <div id="osResults" style="margin-top:10px"></div>
@@ -547,9 +548,11 @@ function proxyRoutes(){
   const c = getCustomProxy();
   if (c) r.push({name:"your proxy", wrap:u=>c.replace(/\/+$/,"")+"/?url="+encodeURIComponent(u), kind:"html"});
   r.push(
-    {name:"allorigins",   wrap:u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), kind:"html"},
     {name:"jina reader",  wrap:u=>"https://r.jina.ai/"+u, kind:"text"},
+    {name:"allorigins",   wrap:u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), kind:"html"},
+    {name:"cors.eu.org",  wrap:u=>"https://cors.eu.org/"+u, kind:"html"},
     {name:"codetabs",     wrap:u=>"https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(u), kind:"html"},
+    {name:"workers.dev",  wrap:u=>"https://test.cors.workers.dev/?"+u, kind:"html"},
     {name:"allorigins-json", wrap:u=>"https://api.allorigins.win/get?url="+encodeURIComponent(u), kind:"json"},
     {name:"corsproxy",    wrap:u=>"https://corsproxy.io/?url="+encodeURIComponent(u), kind:"html"}
   );
@@ -723,6 +726,19 @@ function addOnlinePhone(rec){
   return true;
 }
 document.getElementById("osSearch").addEventListener("click", osSearchRun);
+document.getElementById("osTest").addEventListener("click", async ()=>{
+  const b = document.getElementById("osTest");
+  b.disabled = true;
+  try{
+    await fetchAnyRoute(GSM, t => t && t.length > 300 ? t : null, "Testing connection");
+    osStatus("Connection OK — at least one route can reach GSMArena from here. Search should work.", false);
+  }catch(e){
+    const allNet = /sandboxed preview/i.test(e.message);
+    osStatus(allNet
+      ? "This app/preview blocks all internet requests — the search cannot work here. Open Chrome (the browser app itself), type your github.io address in the address bar, and use the tool there."
+      : "No route could reach GSMArena — "+e.message, false);
+  }finally{ b.disabled = false; }
+});
 document.getElementById("osQuery").addEventListener("keydown", e=>{ if(e.key==="Enter") osSearchRun(); });
 document.getElementById("proxyUrl").value = getCustomProxy();
 document.getElementById("proxySave").addEventListener("click", ()=>{
