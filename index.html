@@ -579,15 +579,16 @@ async function fetchAnyRoute(url, extract, label){
           if (!text || text.length < 300) throw new Error("empty response");
           if (/too many requests|access denied|captcha|cf-challenge/i.test(text.slice(0, 4000))) throw new Error("blocked by site");
           const out = extract(text);
-          if (!out) throw new Error("no data in page");
-          if (!done){ done = true; console.info("[FitCheck] route succeeded:", route.name); resolve(out); }
+          if (!out){ console.debug("[FitCheck no-data]", route.name, text.slice(0,400)); throw new Error("no data in page"); }
+          if (!done){ done = true; window.__lastRoute = route.name; console.info("[FitCheck] route succeeded:", route.name); resolve(out); }
         }catch(e){
           const msg = route.name+": "+(e.message || e.name || "failed");
           errs.push(msg); console.warn("[FitCheck route failed]", msg);
           if (--pending === 0 && !done){
-            const sandboxed = errs.some(m=>/could not be cloned|postMessage|NetworkError|Failed to fetch/i.test(m));
-            reject(new Error("all "+R.length+" routes failed"+
-              (sandboxed ? ". This page looks like it's running in a sandboxed preview/editor that blocks external requests — open the tool in a normal browser tab (your GitHub Pages link, or double-click index.html)" : ". Details in browser console (F12)")));
+            const sandboxed = errs.every(m=>/could not be cloned|postMessage|NetworkError|Failed to fetch/i.test(m));
+            const detail = errs.slice(0,4).map(m=>m.length>48?m.slice(0,48)+"…":m).join(" · ");
+            reject(new Error("all "+R.length+" routes failed — "+detail+
+              (sandboxed ? " (environment or an extension appears to block these requests)" : "")));
           }
         }
       })();
@@ -685,9 +686,18 @@ async function osSearchRun(){
   if(!q){ toast("Type a phone model to search"); return; }
   box.innerHTML = ""; btn.disabled = true;
   try{
-    const items = await fetchAnyRoute(
-      GSM + "results.php3?sQuickSearch=yes&sName=" + encodeURIComponent(q),
-      extractSearchItems, "Searching \u201C"+q+"\u201D");
+    let items = null, lastErr = null;
+    for (let attempt = 1; attempt <= 2 && !items; attempt++){
+      try{
+        items = await fetchAnyRoute(
+          GSM + "results.php3?sQuickSearch=yes&sName=" + encodeURIComponent(q),
+          extractSearchItems, (attempt>1?"Retrying — ":"")+"Searching \u201C"+q+"\u201D");
+      }catch(e){
+        lastErr = e;
+        if (attempt === 1){ osStatus("First attempt failed, retrying in 3 seconds …", true); await new Promise(r=>setTimeout(r,3000)); }
+      }
+    }
+    if (!items) throw lastErr;
     osStatus(items.length + " results — click Add to load into phone database", false);
     box.innerHTML = items.map((it,i)=>{
       const clean = it.name;
@@ -712,7 +722,7 @@ async function osSearchRun(){
       });
     });
   }catch(e){
-    osStatus("Search failed — "+e.message+". All free proxies may be rate-limited right now: wait a minute and retry, or set up your own proxy (Advanced below) for a permanent fix.", false);
+    osStatus("Search failed — "+e.message, false);
   }finally{ btn.disabled = false; }
 }
 function addOnlinePhone(rec){
@@ -731,7 +741,7 @@ document.getElementById("osTest").addEventListener("click", async ()=>{
   b.disabled = true;
   try{
     await fetchAnyRoute(GSM, t => t && t.length > 300 ? t : null, "Testing connection");
-    osStatus("Connection OK — at least one route can reach GSMArena from here. Search should work.", false);
+    osStatus("Connection OK via \u201C"+(window.__lastRoute||"?")+"\u201D — this route can reach GSMArena from here.", false);
   }catch(e){
     const allNet = /sandboxed preview/i.test(e.message);
     osStatus(allNet
