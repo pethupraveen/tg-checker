@@ -12,6 +12,11 @@ A free, single-file web tool that matches tempered glass / screen guard stock ag
 - **To-scale visual fit overlay** (SVG technical drawing) for every match
 - Edit / delete entries, data persists in the browser (localStorage)
 - **CSV import/export** for both databases — bulk-load your inventory from Excel (save as CSV)
+- **Search phone data online** — searches GSMArena, pick a result and its dimensions plus computed display H×W (from screen size + resolution) load straight into the phone database. Duplicates are detected and skipped with a notification — this applies to online loads, manual adds, and CSV imports alike (existing entries are never overwritten; only new phones are added).
+
+### Notes on online search
+
+GSMArena has no official API and blocks direct browser requests, so the tool routes searches through free public CORS proxies (allorigins, corsproxy.io, codetabs) with automatic fallback. Occasionally a proxy is rate-limited — just retry after a minute. GSMArena does not publish corner radius or cutout position, so loaded phones use a 3.0 mm default radius and a best-guess cutout (Dynamic Island for recent iPhones, Punch Hole Center otherwise, curved-display detection from the spec text) — hit **Edit** on the loaded row to fine-tune.
 
 ## Host it free with GitHub Pages
 
