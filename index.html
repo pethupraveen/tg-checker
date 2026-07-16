@@ -98,6 +98,11 @@ tr:hover td{background:var(--paper)}
 .toast{position:sticky;bottom:16px;margin:16px auto 0;width:fit-content;max-width:90%;background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:8px;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.show{opacity:1}
 .footer-note{margin-top:32px;font-size:12px;color:var(--faint);text-align:center;font-family:var(--mono)}
+.os-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--hair);font-size:14px}
+.os-item:hover{background:var(--paper)}
+.os-item .dup{font-size:11px;font-family:var(--mono);color:var(--warn)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--hair-strong);border-top-color:var(--pass);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
 .stack{display:grid;gap:20px}
 @media(min-width:880px){.stack.cols{grid-template-columns:1fr 1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -166,6 +171,17 @@ tr:hover td{background:var(--paper)}
 
 <!-- ============ PHONES ============ -->
 <section id="tab-phones" hidden>
+  <div class="panel" style="margin-bottom:20px">
+    <p class="eyebrow">Online lookup</p>
+    <h2>Search phone data online</h2>
+    <p class="sub">Searches GSMArena and auto-loads dimensions into the phone database. Duplicates are detected and skipped. Corner radius and cutout use defaults — edit after adding.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="osQuery" placeholder="e.g. Galaxy S24 Ultra" style="flex:1;min-width:200px" aria-label="Phone model to search">
+      <button class="btn btn-primary" id="osSearch">Search online</button>
+    </div>
+    <div id="osStatus" class="hint" hidden></div>
+    <div id="osResults" style="margin-top:10px"></div>
+  </div>
   <div class="stack cols">
     <div class="panel">
       <p class="eyebrow">Data 1</p>
@@ -427,7 +443,9 @@ function clearPhoneForm(){ ["pBrand","pModel","pRad","pOH","pOW","pDH","pDW"].fo
   document.getElementById("pSave").textContent="Add phone"; document.getElementById("pCancel").hidden=true; }
 document.getElementById("pSave").addEventListener("click",()=>{
   const p = readPhoneForm(); if(!p) return;
-  if (editP>=0){ phones[editP]=p; toast("Phone updated"); } else { phones.push(p); toast("Phone added"); }
+  if (editP>=0){ phones[editP]=p; toast("Phone updated"); }
+  else if (isDuplicate(p.brand, p.model)){ toast(p.brand+" "+p.model+" already exists in the database — not added"); return; }
+  else { phones.push(p); toast("Phone added"); }
   clearPhoneForm(); persist(); render();
 });
 document.getElementById("pCancel").addEventListener("click",clearPhoneForm);
@@ -494,10 +512,13 @@ document.getElementById("gExport").addEventListener("click",()=>{
 document.getElementById("pImport").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f)return;
   f.text().then(t=>{
-    const rows=parseCSV(t).slice(1); let n=0;
+    const rows=parseCSV(t).slice(1); let n=0, skipped=0;
     rows.forEach(r=>{ if(r.length>=9){ const p={brand:r[0].trim(),model:r[1].trim(),type:r[2].trim(),cam:r[3].trim(),rad:parseFloat(r[4]),oh:parseFloat(r[5]),ow:parseFloat(r[6]),dh:parseFloat(r[7]),dw:parseFloat(r[8])};
-      if(p.brand&&p.model&&![p.rad,p.oh,p.ow,p.dh,p.dw].some(isNaN)){ phones.push(p); n++; } } });
-    persist(); render(); toast(n+" phones imported"); e.target.value="";
+      if(p.brand&&p.model&&![p.rad,p.oh,p.ow,p.dh,p.dw].some(isNaN)){
+        if(isDuplicate(p.brand,p.model)){ skipped++; } else { phones.push(p); n++; }
+      } } });
+    persist(); render();
+    toast(n+" phones imported"+(skipped?" · "+skipped+" skipped (already exist)":"")); e.target.value="";
   });
 });
 document.getElementById("gImport").addEventListener("change",e=>{
@@ -509,6 +530,139 @@ document.getElementById("gImport").addEventListener("change",e=>{
     persist(); render(); toast(n+" glasses imported"); e.target.value="";
   });
 });
+
+/* ---------- online phone lookup (GSMArena via CORS proxies) ---------- */
+const PROXIES = [
+  u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+  u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
+  u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u)
+];
+async function proxied(url){
+  let lastErr;
+  for (const wrap of PROXIES){
+    try{
+      const r = await fetch(wrap(url), {signal: AbortSignal.timeout ? AbortSignal.timeout(12000) : undefined});
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      const t = await r.text();
+      if(t.length < 500) throw new Error("Empty response");
+      return t;
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error("All proxies failed");
+}
+function osStatus(msg, busy){
+  const s = document.getElementById("osStatus");
+  if(msg===null){ s.hidden = true; return; }
+  s.hidden = false;
+  s.innerHTML = (busy ? '<span class="spin" aria-hidden="true"></span>' : '') + esc(msg);
+}
+function isDuplicate(brand, model){
+  const key = (brand+" "+model).toLowerCase().replace(/\s+/g," ").trim();
+  return phones.some(p => (p.brand+" "+p.model).toLowerCase().replace(/\s+/g," ").trim() === key);
+}
+function guessCutout(brand, model){
+  const b = brand.toLowerCase(), m = model.toLowerCase();
+  if (b === "apple"){
+    const gen = m.match(/iphone\s*(\d+)/);
+    if (gen && parseInt(gen[1]) >= 15) return "Dynamic Island";
+    if (gen && parseInt(gen[1]) === 14 && m.includes("pro")) return "Dynamic Island";
+    return "U Cut";
+  }
+  return "Punch Hole - Center";
+}
+function parseSpecPage(html, fallbackName){
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const name = (doc.querySelector("h1.specs-phone-name-title, h1[data-spec=modelname], h1") || {}).textContent || fallbackName || "";
+  const spec = k => { const el = doc.querySelector('[data-spec="'+k+'"]'); return el ? el.textContent.trim() : ""; };
+  const dims = spec("dimensions");
+  const dm = dims.match(/([\d.]+)\s*x\s*([\d.]+)\s*x\s*[\d.]+\s*mm/i);
+  if(!dm) throw new Error("Dimensions not found on spec page");
+  const oh = parseFloat(dm[1]), ow = parseFloat(dm[2]);
+  const sizeTxt = spec("displaysize");
+  const inch = (sizeTxt.match(/([\d.]+)\s*inches/i) || [])[1];
+  const resTxt = spec("displayresolution");
+  const rm = resTxt.match(/(\d+)\s*x\s*(\d+)/);
+  let dh = null, dw = null;
+  if (inch && rm){
+    const diag = parseFloat(inch) * 25.4;
+    let a = parseInt(rm[1]), b = parseInt(rm[2]);
+    const wPx = Math.min(a,b), hPx = Math.max(a,b);
+    const hyp = Math.sqrt(wPx*wPx + hPx*hPx);
+    dh = Math.round(diag * hPx / hyp * 10)/10;
+    dw = Math.round(diag * wPx / hyp * 10)/10;
+  } else {
+    dh = Math.round((oh - 6) * 10)/10; dw = Math.round((ow - 4) * 10)/10;
+  }
+  const dispType = /curved/i.test(spec("displaytype") + " " + (doc.body.textContent.match(/curved (edge|display|screen)/i) || [""])[0]) ? "3D Curved" : "Flat";
+  const clean = name.replace(/\s+/g," ").trim();
+  const brand = clean.split(" ")[0] || "Unknown";
+  const model = clean.slice(brand.length).trim() || clean;
+  return {brand, model, type:dispType, cam:guessCutout(brand, clean), rad:3.0, oh, ow, dh, dw};
+}
+async function osSearchRun(){
+  const q = document.getElementById("osQuery").value.trim();
+  const box = document.getElementById("osResults");
+  if(!q){ toast("Type a phone model to search"); return; }
+  box.innerHTML = "";
+  osStatus("Searching GSMArena for \""+q+"\" …", true);
+  try{
+    const html = await proxied("https://www.gsmarena.com/results.php3?sQuickSearch=yes&sName=" + encodeURIComponent(q));
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    let items = Array.from(doc.querySelectorAll(".makers ul li a")).map(a => ({
+      href: a.getAttribute("href"),
+      name: a.textContent.replace(/\s+/g," ").trim()
+    })).filter(x => x.href && x.name);
+    if(!items.length){
+      const single = doc.querySelector('h1.specs-phone-name-title, [data-spec="modelname"]');
+      if(single){
+        const rec = parseSpecPage(html, single.textContent);
+        addOnlinePhone(rec); osStatus(null); return;
+      }
+      osStatus("No results found. Try a shorter query (e.g. \"S24 Ultra\").", false);
+      return;
+    }
+    items = items.slice(0, 10);
+    osStatus(items.length + " results — click Add to load into phone database", false);
+    box.innerHTML = items.map((it,i)=>{
+      const clean = it.name;
+      const brand = clean.split(" ")[0], model = clean.slice(brand.length).trim();
+      const dup = isDuplicate(brand, model);
+      return '<div class="os-item"><span>'+esc(clean)+(dup?' <span class="dup">already in database</span>':'')+'</span>'+
+        '<button class="btn btn-sm'+(dup?'"disabled':' btn-primary"')+' data-i="'+i+'">'+(dup?'Skipped':'Add')+'</button></div>';
+    }).join("");
+    box.querySelectorAll("button[data-i]").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const it = items[parseInt(btn.dataset.i)];
+        btn.disabled = true; btn.textContent = "Loading…";
+        osStatus("Fetching specs for "+it.name+" …", true);
+        try{
+          const page = await proxied("https://www.gsmarena.com/" + it.href);
+          const rec = parseSpecPage(page, it.name);
+          const added = addOnlinePhone(rec);
+          btn.textContent = added ? "Added" : "Skipped";
+          osStatus(null);
+        }catch(e){
+          btn.disabled = false; btn.textContent = "Add";
+          osStatus("Could not load specs ("+e.message+"). Try again — proxies are sometimes rate-limited.", false);
+        }
+      });
+    });
+  }catch(e){
+    osStatus("Search failed ("+e.message+"). Check your connection or try again in a minute.", false);
+  }
+}
+function addOnlinePhone(rec){
+  if (isDuplicate(rec.brand, rec.model)){
+    toast(rec.brand+" "+rec.model+" already exists — not loaded");
+    return false;
+  }
+  phones.push(rec);
+  persist(); render();
+  toast(rec.brand+" "+rec.model+" added — review corner radius and cutout (defaults used)");
+  return true;
+}
+document.getElementById("osSearch").addEventListener("click", osSearchRun);
+document.getElementById("osQuery").addEventListener("keydown", e=>{ if(e.key==="Enter") osSearchRun(); });
 
 /* ---------- misc ---------- */
 document.getElementById("loadSample").addEventListener("click",()=>{
