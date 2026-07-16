@@ -556,27 +556,40 @@ function proxyRoutes(){
   return r;
 }
 function fetchTimeout(url, ms){
-  if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) return fetch(url, {signal: AbortSignal.timeout(ms)});
-  const ctl = new AbortController(); setTimeout(()=>ctl.abort(), ms);
-  return fetch(url, {signal: ctl.signal});
+  return Promise.race([
+    fetch(url, {method:"GET", credentials:"omit"}),
+    new Promise((_, rej)=>setTimeout(()=>rej(new Error("timeout after "+(ms/1000)+"s")), ms))
+  ]);
 }
 async function fetchAnyRoute(url, extract, label){
-  const R = proxyRoutes(); let lastErr = "no route succeeded";
-  for (let i=0; i<R.length; i++){
-    osStatus((label||"Fetching")+" — route "+(i+1)+"/"+R.length+" ("+R[i].name+") …", true);
-    try{
-      const resp = await fetchTimeout(R[i].wrap(url), 15000);
-      if(!resp.ok) throw new Error("HTTP "+resp.status);
-      let text = await resp.text();
-      if (R[i].kind === "json"){ try{ text = JSON.parse(text).contents || ""; }catch(e){} }
-      if (!text || text.length < 300) throw new Error("empty response");
-      if (/too many requests|access denied|captcha|cf-challenge/i.test(text.slice(0, 4000))) throw new Error("blocked by site");
-      const out = extract(text);
-      if (out) return out;
-      throw new Error("no data in page");
-    }catch(e){ lastErr = R[i].name+": "+(e.message || e.name || "failed"); }
-  }
-  throw new Error(lastErr);
+  const R = proxyRoutes(); const errs = [];
+  osStatus((label||"Fetching")+" — racing "+R.length+" routes, fastest wins …", true);
+  return new Promise((resolve, reject)=>{
+    let pending = R.length, done = false;
+    R.forEach(route=>{
+      (async ()=>{
+        try{
+          const resp = await fetchTimeout(route.wrap(url), 12000);
+          if(!resp.ok) throw new Error("HTTP "+resp.status);
+          let text = await resp.text();
+          if (route.kind === "json"){ try{ text = JSON.parse(text).contents || ""; }catch(e){} }
+          if (!text || text.length < 300) throw new Error("empty response");
+          if (/too many requests|access denied|captcha|cf-challenge/i.test(text.slice(0, 4000))) throw new Error("blocked by site");
+          const out = extract(text);
+          if (!out) throw new Error("no data in page");
+          if (!done){ done = true; console.info("[FitCheck] route succeeded:", route.name); resolve(out); }
+        }catch(e){
+          const msg = route.name+": "+(e.message || e.name || "failed");
+          errs.push(msg); console.warn("[FitCheck route failed]", msg);
+          if (--pending === 0 && !done){
+            const sandboxed = errs.some(m=>/could not be cloned|postMessage|NetworkError|Failed to fetch/i.test(m));
+            reject(new Error("all "+R.length+" routes failed"+
+              (sandboxed ? ". This page looks like it's running in a sandboxed preview/editor that blocks external requests — open the tool in a normal browser tab (your GitHub Pages link, or double-click index.html)" : ". Details in browser console (F12)")));
+          }
+        }
+      })();
+    });
+  });
 }
 function osStatus(msg, busy){
   const s = document.getElementById("osStatus");
