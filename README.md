@@ -16,7 +16,25 @@ A free, single-file web tool that matches tempered glass / screen guard stock ag
 
 ### Notes on online search
 
-GSMArena has no official API and blocks direct browser requests, so the tool routes searches through free public CORS proxies (allorigins, corsproxy.io, codetabs) with automatic fallback. Occasionally a proxy is rate-limited — just retry after a minute. GSMArena does not publish corner radius or cutout position, so loaded phones use a 3.0 mm default radius and a best-guess cutout (Dynamic Island for recent iPhones, Punch Hole Center otherwise, curved-display detection from the spec text) — hit **Edit** on the loaded row to fine-tune.
+GSMArena has no official API and blocks direct browser requests, so the tool tries up to 5 free proxy routes in order (allorigins, Jina Reader, codetabs, corsproxy) until one works, with block-page detection and both HTML and plain-text parsing. GSMArena does not publish corner radius or cutout position, so loaded phones use a 3.0 mm default radius and a best-guess cutout (Dynamic Island for recent iPhones, Punch Hole Center otherwise, curved-display detection from the spec text) — hit **Edit** on the loaded row to fine-tune.
+
+### Online search not working? The permanent fix (5 minutes, free)
+
+Free public proxies share their IPs with thousands of users, so GSMArena rate-limits them ("blocked by site" / "HTTP 429"). Deploy your own tiny proxy on Cloudflare Workers — only you use it, so it never gets blocked:
+
+1. Sign up free at dash.cloudflare.com.
+2. Go to **Workers & Pages → Create → Create Worker → Deploy** (accept the default hello-world).
+3. Click **Edit code**, delete everything, paste the contents of the included `worker.js`, click **Deploy**.
+4. Copy the worker URL shown (looks like `https://tg-proxy.your-name.workers.dev`).
+5. In FitCheck, open **Phone data → Advanced** under the search box, paste the URL, click **Save**.
+
+Your proxy is now tried first on every search. Cloudflare's free tier allows 100,000 requests per day — far more than you'll ever need, and responses are cached for an hour so repeat searches are instant.
+
+Other quick checks if search fails:
+- Wait 1–2 minutes and retry — free proxies recover quickly.
+- Try a shorter query ("S24 Ultra" instead of "Samsung Galaxy S24 Ultra 5G 256GB").
+- Open the browser console (F12) — if you see CORS or 429 errors, it's the proxies, not your data; the custom worker above fixes it.
+- Ad blockers / privacy extensions sometimes block proxy domains — try once with them off.
 
 ## Host it free with GitHub Pages
 
