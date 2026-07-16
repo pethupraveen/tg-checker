@@ -624,20 +624,32 @@ function extractSearchItems(text){
       name: a.textContent.replace(/\s+/g," ").trim()
     }));
   }catch(e){}
+  const badHref = /-phones-|glossary|compare|-review|rumor|news|deals|videos|\.php3/i;
+  const badName = /^(picture|read|review|opinion|image|compare|vs\b)/i;
+  const goodHref = x => x && /-\d+\.php$/.test(x) && !badHref.test(x);
+  items = items.filter(x => goodHref(x.href) && x.name.length > 2 && !badName.test(x.name));
+  if (items.length) return {items: items.slice(0, 10)};
+
+  const single = parseSpec(text, "");
+  if (single) return {single};
+
+  const seen = new Set(); let m;
+  const reA = /<a[^>]+href="(?:https?:\/\/www\.gsmarena\.com\/)?([a-z0-9_+.]+-\d+\.php)"[^>]*>([\s\S]*?)<\/a>/gi;
+  while ((m = reA.exec(text))){
+    const href = m[1];
+    const name = m[2].replace(/<[^>]*>/g," ").replace(/&[a-z#0-9]+;/gi," ").replace(/\s+/g," ").trim();
+    if (!goodHref(href) || name.length < 3 || badName.test(name) || seen.has(href)) continue;
+    seen.add(href); items.push({href, name});
+  }
   if (!items.length){
-    const re = /\[([^\]\n]{3,70})\]\((?:https?:\/\/www\.gsmarena\.com\/)?([a-z0-9_+.]+-\d+\.php)\)/gi;
-    const seen = new Set(); let m;
-    while ((m = re.exec(text))){
+    const reMd = /\[([^\]\n]{3,70})\]\((?:https?:\/\/www\.gsmarena\.com\/)?([a-z0-9_+.]+-\d+\.php)\)/gi;
+    while ((m = reMd.exec(text))){
       const name = m[1].replace(/[!*_#]/g,"").replace(/\s+/g," ").trim(), href = m[2];
-      if (/-phones-|glossary|compare|-review|rumor|news/i.test(href)) continue;
-      if (/^(picture|read|review|opinion|image)/i.test(name)) continue;
-      if (seen.has(href)) continue;
-      seen.add(href);
-      items.push({href, name});
+      if (!goodHref(href) || name.length < 3 || badName.test(name) || seen.has(href)) continue;
+      seen.add(href); items.push({href, name});
     }
   }
-  items = items.filter(x => x.href && /-\d+\.php$/.test(x.href) && x.name.length > 2);
-  return items.length ? items.slice(0, 10) : null;
+  return items.length ? {items: items.slice(0, 10)} : null;
 }
 function parseSpec(text, fallbackName){
   let name="", dims="", sizeTxt="", resTxt="", typeTxt="";
@@ -686,10 +698,10 @@ async function osSearchRun(){
   if(!q){ toast("Type a phone model to search"); return; }
   box.innerHTML = ""; btn.disabled = true;
   try{
-    let items = null, lastErr = null;
-    for (let attempt = 1; attempt <= 2 && !items; attempt++){
+    let result = null, lastErr = null;
+    for (let attempt = 1; attempt <= 2 && !result; attempt++){
       try{
-        items = await fetchAnyRoute(
+        result = await fetchAnyRoute(
           GSM + "results.php3?sQuickSearch=yes&sName=" + encodeURIComponent(q),
           extractSearchItems, (attempt>1?"Retrying — ":"")+"Searching \u201C"+q+"\u201D");
       }catch(e){
@@ -697,7 +709,16 @@ async function osSearchRun(){
         if (attempt === 1){ osStatus("First attempt failed, retrying in 3 seconds …", true); await new Promise(r=>setTimeout(r,3000)); }
       }
     }
-    if (!items) throw lastErr;
+    if (!result) throw lastErr;
+    if (result.single){
+      const rec = result.single;
+      const added = addOnlinePhone(rec);
+      osStatus(added
+        ? "Exact match: "+rec.brand+" "+rec.model+" — added to phone database."
+        : rec.brand+" "+rec.model+" is already in the database — not loaded.", false);
+      return;
+    }
+    const items = result.items;
     osStatus(items.length + " results — click Add to load into phone database", false);
     box.innerHTML = items.map((it,i)=>{
       const clean = it.name;
